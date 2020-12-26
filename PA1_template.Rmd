@@ -7,19 +7,150 @@ output:
 
 
 ## Loading and preprocessing the data
+    In order to load and preprocess the data, we use the dplyr and lubridate
+    libraries, and then we group the data by date, and summarize the data to
+    calculate the daily totals.
+``` {r message=FALSE}
+library(dplyr)
+library(lubridate)
+```
+```{r}
 
+df<-read.csv("activity.csv", stringsAsFactors = FALSE)
+df$date<-as.Date(as.character(df$date))
+by_date<-group_by(df,date)
+sum_by_date<-summarise(by_date, daily_total=sum(steps,na.rm=TRUE))
+
+```
 
 
 ## What is mean total number of steps taken per day?
+    The mean and medians for the data are calculated on the grouped data 
+    and the total sums are plotted using a barplot
+```{r}
+
+# Total number of steps divided by number of dates
+meanByDate<-sum(sum_by_date$daily_total,na.rm=TRUE)/length(sum_by_date$date)
+median_step<-median(sum_by_date$daily_total, na.rm=TRUE)
+barplot(daily_total ~ date, 
+        data=sum_by_date,
+        xlab="Date",
+        ylab="Total Daily Steps",
+        main="Total Steps per Day")
 
 
+```
+    
+    The averages for the data are below:
+      * The mean number of steps per days is `r meanByDate`
+      * The median number of steps per day is `r median_step`
 
 ## What is the average daily activity pattern?
 
+    In order to calculate the average daily pattern, we must first group by the
+    interval, and then summarize the data.  The results are plotted in a line plot
+    below.
+```{r}
 
+by_interval<-group_by(df,interval)
+interval_summary<-summarize(by_interval, interval_sum=sum(steps,na.rm=TRUE),
+                           interval_mean=mean(steps,na.rm=TRUE),
+                           interval_median=median(steps,na.rm=TRUE))
+
+with(interval_summary, plot(x=interval, y=interval_mean, 
+                            type="l",
+                            xlab="Interval", 
+                            ylab="Mean number of steps",
+                            main="Mean Number of Steps by Interval"))
+```
+    
+    Even though the assignment required a line plot, a bar plot seems to provide
+    better interval resolution. We can use this plot to further verify the 
+    calculation of the interval with the maximum number of steps.
+```{r}
+max_mean_steps<-max(interval_summary$interval_mean)
+max_row<-filter(interval_summary, interval_mean >= max_mean_steps)
+barplot(interval_mean ~ interval,data=interval_summary,
+        xlab="Interval", 
+        ylab="Mean number of steps",
+        main="Mean Number of Steps by Interval")
+
+
+```
+  
+  * The interval containing the maximum mean steps is `r max_row$interval`
 
 ## Imputing missing values
 
+    For this dataset, we will impute the data using the mean steps for the 
+    day to replace NA values. Once the data is imputed, it can be summarized
+    and plotted with a barplot to show the differences with the non-imputed data.
 
+``` {r message=FALSE}
+library(Hmisc)
+```
+``` {r}
+#Calculate missing values
+num_missing<-sum(is.na(df$steps))
+#impute the data from the original dataframe
+df$imputed_steps<-with(df, impute(steps,mean))
+fixed_data<-select(df, c(date, interval,imputed_steps))
 
+#Group and Summarize the imputed data
+by_date<-group_by(df,date)
+imputed_sum<-summarise(by_date,daily_total=sum(imputed_steps), 
+                              daily_mean=mean(imputed_steps),
+                              daily_median=median(imputed_steps))
+imputed_median<-median(imputed_sum$daily_total)
+imputed_mean<-sum(imputed_sum$daily_total)/length(imputed_sum$date)
+barplot(daily_total ~ date, 
+        data=imputed_sum,
+        xlab="Date",
+        ylab="Total Daily Steps",
+        main="Total Steps per Day")
+```
+  
+  * The number of missing values in the data is `r num_missing`
+  
+  * After imputing the data: 
+      * the mean number of steps per day is now `r format(imputed_mean, digits=8)`
+      * the median number of steps per day is now `r format(imputed_median, digits=8)`
+  
 ## Are there differences in activity patterns between weekdays and weekends?
+
+    In order to compare the weekday vs weekend activity, a factor variable must 
+    first be created that distinguishes between week day vs weekend data. 
+    Once the data is filtered on those two factors, it can be grouped, summarized
+    and plotted to show differences in activity patterns.
+``` {r}
+
+#create a factor variable for the imputed data (weekend vs weekday)
+fixed_data<-mutate(fixed_data, 
+                   day_of_week=factor(ifelse(weekdays(date, abbreviate=TRUE) %in%
+                                        c("Sat","Sun"),"weekend","weekday")))
+#group the data by interval
+fixed_by_interval<-group_by(fixed_data,interval)
+
+#filter the weekday data and summarize
+weekday_data<-filter(fixed_by_interval, day_of_week=="weekday")
+summarized_weekday<-summarise(weekday_data, interval_mean=mean(imputed_steps),interval,date)
+
+#filter the weekend data and summarize
+weekend_data<-filter(fixed_by_interval, day_of_week=="weekend")
+summarized_weekend<-summarise(weekend_data, interval_mean=mean(imputed_steps),interval,date)
+
+#Make side by side plots of the weekend and weekday data
+par(mfrow=c(2,1))
+with(summarized_weekday, plot(x=interval, y=interval_mean, 
+                            type="l",
+                            xlab="Interval",
+                            ylab="Mean number of steps",
+                            main="Mean Number of Steps by Interval Weekday"))
+with(summarized_weekend, plot(x=interval, y=interval_mean, 
+                            type="l",
+                            xlab="Interval",
+                            ylab="Mean number of steps",
+                            main="Mean Number of Steps by Interval Weekend"))
+
+
+```
